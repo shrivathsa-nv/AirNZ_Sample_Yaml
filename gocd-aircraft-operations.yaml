@@ -1,0 +1,87 @@
+format_version: 5
+
+common:
+  nonprod-group: &nonprod-group AircraftOperations
+  deploy_environment_variables: &deploy_environment_variables
+    API_NAME: aidx-quantum-brs-publisher-v2
+    CONFIG_DIR: config
+  deploy_materials: &deploy_materials
+    app:
+      git: ssh://git@bitbucket.example.com:3000/aop/aidx-quantum-brs-publisher-v2.git
+      branch: master
+      destination: app
+    config:
+      git: ssh://git@bitbucket.example.com:3000/aop/aidx-quantum-brs-publisher-v2-config.git
+      branch: master
+      destination: config
+    deploy:
+      git: https://dev.azure.com/CompanyA/ProjectB/_git/k8s-app-deployment-templates
+      username: xxxxyyyyzzzz
+      encrypted_password: AES:xxxxyyyyzzzz
+      branch: master
+      whitelist:
+        - "templates/aidx-quantum-brs-publisher-v2/#{NAMESPACE}.yaml"
+      destination: deploy
+  change-management-material: &change-management-material
+    change-management:
+      git: ssh://git@bitbucket.example.com:3000/dsp/airnz-change-management.git
+      branch: master
+      destination: changemanagement
+
+pipelines:
+  aidx-quantum-brs-publisher-v2-k8s-deploy-test:
+    group: *nonprod-group
+    template: k8s-app-deployment-api-template-azure-test-v2
+    label_template: "${build}"
+    environment_variables:
+      # Deploy variables
+      <<: *deploy_environment_variables
+      EMAIL_BASE_URI: https://api-internal.q0.example.com
+      QUANTUM_BASE_URI: https://airnz-qual.quantum.aero:8143
+    secure_variables:
+      EMAIL_API_JWT: AES:xxxxyyyyzzzz
+    parameters:
+      NAMESPACE: test
+    materials:
+      build:
+        pipeline: aidx-quantum-brs-publisher-v2-app
+        stage: build
+      <<: *deploy_materials
+
+  aidx-quantum-brs-publisher-v2-k8s-deploy-qual:
+    group: *nonprod-group
+    template: k8s-app-deployment-api-template-azure-qual-v2
+    label_template: "${build}"
+    environment_variables:
+      # Deploy variables
+      <<: *deploy_environment_variables
+      CHANGE_MANAGEMENT_CONFIGURATION_ITEM_NAME: "Quantum BRS Publisher V2"
+      EMAIL_BASE_URI: https://api-internal.q0.example.com
+      QUANTUM_BASE_URI: https://airnz-qual.quantum.aero:8143
+    secure_variables:
+      EMAIL_API_JWT: AES:xxxxyyyyzzzz
+    parameters:
+      NAMESPACE: qual
+    materials:
+      build:
+        pipeline: aidx-quantum-brs-publisher-v2-k8s-deploy-test
+        stage: smoke-test
+      <<: *deploy_materials
+      <<: *change-management-material
+
+  aidx-quantum-brs-publisher-v2-k8s-deploy-prod:
+    group: AircraftOperationsProd
+    template: k8s-app-deployment-api-template-azure-prod-v2
+    label_template: "${build}"
+    environment_variables:
+      # Deploy variables
+      <<: *deploy_environment_variables
+      CHANGE_MANAGEMENT_CONFIGURATION_ITEM_NAME: "Quantum BRS Publisher V2"
+    parameters:
+      NAMESPACE: prod
+    materials:
+      build:
+        pipeline: aidx-quantum-brs-publisher-v2-k8s-deploy-qual
+        stage: smoke-test
+      <<: *deploy_materials
+      <<: *change-management-material
